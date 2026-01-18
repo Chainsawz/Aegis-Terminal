@@ -1,60 +1,61 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-import pandas as pd
+import requests
 from datetime import datetime
 
-# Configuración estética Cyberpunk
-st.set_page_config(page_title="AEGIS TERMINAL v1.0", layout="wide")
+# --- CONFIGURACIÓN Y ESTÉTICA ---
+st.set_page_config(page_title="AEGIS TERMINAL v2.0", layout="wide")
+st.markdown("<style>.main { background-color: #0b0d17; color: #00ff41; }</style>", unsafe_allow_html=True)
 
-st.markdown("""
-    <style>
-    .main { background-color: #0b0d17; color: #00ff41; }
-    h1 { color: #ff0055; text-shadow: 2px 2px #5d001e; font-family: 'Courier New'; }
-    .stAlert { background-color: #1a1a1a; border: 1px solid #ff0055; }
-    </style>
-    """, unsafe_allow_html=True)
+st.title("🛰️ AEGIS TERMINAL: Live Intel Feed")
 
-st.title("🛰️ AEGIS TERMINAL: Global Military Watch (2026)")
-st.write(f"Sincronizado con la Red: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+# --- GESTIÓN DE LA API KEY ---
+# Nota: En Streamlit Cloud, pon esto en "Secrets" para que no te la roben.
+# El código busca en el búnker 'Secrets' la etiqueta llamada "news_api_key"
+API_KEY = st.secrets["news_api_key"]
 
-# --- SIMULACIÓN DE DATOS (Lo que extraeremos con IA después) ---
-data = [
-    {"lat": 50.0755, "lon": 14.4378, "pueblo": "Europa Central", "status": "Alerta Roja", "info": "Maniobras de la OTAN - Despliegue de blindados."},
-    {"lat": 23.6978, "lon": 120.9605, "pueblo": "Estrecho de Taiwán", "status": "Crítico", "info": "Incursión naval detectada. 12 destructores en zona."},
-    {"lat": 34.0522, "lon": -118.2437, "pueblo": "Costa Oeste USA", "status": "Normal", "info": "Ejercicios de defensa costera rutinarios."},
-    {"lat": 12.0000, "lon": 43.0000, "pueblo": "Bab el-Mandeb", "status": "Ataque en curso", "info": "Drones interceptados sobre buque comercial."}
-]
+def get_military_news(api_key):
+    # Buscamos eventos de alto impacto bélico
+    url = f'https://newsapi.org/v2/everything?q=(military OR army OR missile OR "border clash")&sortBy=publishedAt&apiKey={api_key}'
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json().get('articles', [])
+    return []
 
-# --- SIDEBAR: EL FEED DE NOTICIAS (THE ALPHA) ---
-st.sidebar.header("⚠️ FEED DE INTELIGENCIA")
-for d in data:
-    with st.sidebar.expander(f"{d['pueblo']} - {d['status']}"):
-        st.write(d['info'])
+# --- BASE DE DATOS DE COORDENADAS (Simplificada para el Alpha) ---
+# En una versión pro, usaríamos una IA para extraer la lat/lon de la noticia.
+GEOMAP = {
+    "Ukraine": [48.3794, 31.1656], "Russia": [61.524, 105.318], "Israel": [31.0461, 34.8516],
+    "Taiwan": [23.6978, 120.9605], "Iran": [32.4279, 53.6880], "USA": [37.0902, -95.7129],
+    "China": [35.8617, 104.1954], "Poland": [51.9194, 19.1451], "Yemen": [15.5527, 48.5164]
+}
 
-# --- EL MAPA DE GUERRA ---
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB dark_matter")
+if API_KEY:
+    articles = get_military_news(API_KEY)
     
-    for d in data:
-        color = "red" if d["status"] in ["Crítico", "Ataque en curso"] else "orange"
-        folium.CircleMarker(
-            location=[d["lat"], d["lon"]],
-            radius=10,
-            color=color,
-            fill=True,
-            fill_color=color,
-            popup=f"{d['pueblo']}: {d['info']}"
-        ).add_to(m)
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB dark_matter")
+        
+        for art in articles[:15]: # Solo los últimos 15 eventos para no saturar
+            # Buscamos si el país se menciona en el título
+            for country, coords in GEOMAP.items():
+                if country.lower() in art['title'].lower():
+                    folium.Marker(
+                        location=coords,
+                        popup=f"<b>{art['source']['name']}</b>: {art['title']}",
+                        icon=folium.Icon(color='red', icon='warning', prefix='fa')
+                    ).add_to(m)
+        
+        st_folium(m, width=900, height=500)
 
-    st_folium(m, width=900, height=500)
-
-with col2:
-    st.subheader("📊 Riesgo Global")
-    st.metric(label="DEFCON LEVEL", value="3", delta="-1", delta_color="inverse")
-    st.progress(75, text="Inestabilidad Geopolítica")
-    st.info("Nota: Los datos mostrados son de fuentes OSINT públicas filtradas por IA.")
-
-st.warning("DISCLAIMER: El uso de esta información para trading de futuros de petróleo es bajo tu propio riesgo, bro. No seas exit liquidity.")
+    with col2:
+        st.subheader("🔥 Últimos Despliegues")
+        for art in articles[:10]:
+            st.write(f"**{art['publishedAt'][:10]}**")
+            st.write(f"[{art['title']}]({art['url']})")
+            st.divider()
+else:
+    st.warning("Introduce tu API Key en la barra lateral para activar el radar.")
