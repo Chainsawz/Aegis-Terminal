@@ -1,138 +1,83 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-from folium.plugins import MarkerCluster, Fullscreen
 import requests
 import google.generativeai as genai
 import json
 from datetime import datetime
 
-# --- CONFIGURACIÓN DE ALTO NIVEL ---
-st.set_page_config(page_title="AEGIS TACTICAL v4.0", layout="wide", initial_sidebar_state="collapsed")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="AEGIS REPAIR v4.1", layout="wide")
 
-# --- CSS PROFESIONAL (UX/UI REFINADO) ---
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700&family=JetBrains+Mono:wght@400;500&display=swap');
-    
-    .stApp {
-        background-color: #080a0c;
-        color: #e6e8eb;
-        font-family: 'Inter', sans-serif;
-    }
-    
-    /* Contenedor del Mapa */
-    iframe {
-        border-radius: 10px;
-        border: 1px solid #1f2937;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    }
-
-    /* Tarjetas de Intel Stream */
-    .intel-card {
-        background: #111827;
-        border: 1px solid #1f2937;
-        border-left: 3px solid #3b82f6;
-        padding: 12px;
-        border-radius: 6px;
-        margin-bottom: 12px;
-        font-size: 0.85rem;
-    }
-    .threat-critical { border-left-color: #ef4444; }
-    .threat-high { border-left-color: #f97316; }
-
-    /* Métricas Pulidas */
-    [data-testid="stMetric"] {
-        background: #111827;
-        border: 1px solid #1f2937;
-        padding: 15px;
-        border-radius: 8px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- INICIALIZACIÓN DE INTELIGENCIA ---
 try:
     genai.configure(api_key=st.secrets["gemini_api_key"])
     model = genai.GenerativeModel('gemini-1.5-flash')
     NEWS_API_KEY = st.secrets["news_api_key"]
-except Exception as e:
-    st.error("🚨 Error de conexión con el búnker de datos.")
+except:
+    st.error("🚨 KEYS NO ENCONTRADAS EN SECRETS")
     st.stop()
 
-# --- FUNCIONES DE NÚCLEO ---
-def analizar_con_ia(titulo, desc):
-    prompt = f"Analyze military impact of: {titulo}. Respond ONLY JSON: {{\"is_mil\":bool, \"threat\":1-10, \"lat\":float, \"lon\":float, \"loc\":\"Name\"}}"
+# --- FUNCIÓN DE IA CON DEBUG ---
+def analizar_con_ia(titulo):
+    # Prompt ultra-simplificado para evitar errores de formato
+    prompt = f"""
+    Analiza: "{titulo}"
+    Responde SOLO un JSON:
+    {{"is_mil": true, "threat": 5, "lat": 20.0, "lon": 0.0, "loc": "Unknown"}}
+    Si NO es sobre guerra/ejército, is_mil: false.
+    """
     try:
         response = model.generate_content(prompt)
-        return json.loads(response.text.replace('```json', '').replace('```', ''))
-    except: return {"is_mil": False}
+        # Limpieza agresiva de la respuesta
+        clean_json = response.text.strip().replace('```json', '').replace('```', '')
+        return json.loads(clean_json)
+    except Exception as e:
+        # Si la IA falla, lo registramos internamente
+        return {"is_mil": False, "error": str(e)}
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def get_intel():
-    url = f'https://newsapi.org/v2/everything?q=(military OR war OR missile)&sortBy=publishedAt&pageSize=12&apiKey={NEWS_API_KEY}'
-    return requests.get(url).json().get('articles', [])
+    # Ampliamos los términos de búsqueda para asegurar que traiga algo
+    query = "(military OR war OR 'border' OR 'missile' OR 'defense')"
+    url = f'https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}'
+    r = requests.get(url)
+    if r.status_code != 200:
+        st.sidebar.error(f"Error NewsAPI: {r.status_code}")
+        return []
+    return r.json().get('articles', [])
 
-# --- INTERFAZ DE COMANDO ---
-st.markdown("<h2 style='color:#3b82f6; margin-bottom:5px;'>◤ AEGIS TACTICAL COMMAND</h2>", unsafe_allow_html=True)
-st.markdown(f"<p style='color:#6b7280; font-family:\"JetBrains Mono\"; font-size:12px;'>SYSTEM_READY // STREAM_SYNC: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>", unsafe_allow_html=True)
+# --- UI ---
+st.title("◤ AEGIS DEBUG_MODE")
 
-# Dash de métricas rápido
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("SENSORS_ACTIVE", "GLOBAL")
-m2.metric("THREAT_INDEX", "ELEVATED", delta="MODERATE")
-m3.metric("NODES", "ONLINE")
-m4.metric("AI_ANALYST", "GEMINI_PRO")
+articles = get_intel()
+processed_intel = []
 
+if not articles:
+    st.warning("⚠️ No se recibieron noticias de NewsAPI. ¿Has llegado al límite diario?")
+else:
+    st.info(f"📡 {len(articles)} noticias crudas recibidas. Analizando con IA...")
+    
+    for art in articles:
+        intel = analizar_con_ia(art['title'])
+        if intel.get("is_mil"):
+            processed_intel.append({**art, **intel})
+
+# --- MOSTRAR RESULTADOS ---
 col_map, col_feed = st.columns([3, 1])
 
 with col_map:
-    # --- CONFIGURACIÓN DEL MAPA PRO ---
-    # world_copy_jump=False y no_wrap=True evitan la repetición
-    m = folium.Map(
-        location=[20, 0], 
-        zoom_start=2.5, 
-        tiles="CartoDB dark_matter",
-        no_wrap=True,
-        max_bounds=True,
-        min_zoom=2,
-        zoom_control=True
-    )
-    
-    Fullscreen().add_to(m)
-    marker_cluster = MarkerCluster().add_to(m)
-    
-    articles = get_intel()
-    processed_intel = []
-
-    for art in articles:
-        intel = analizar_con_ia(art['title'], art['description'])
-        if intel.get("is_mil"):
-            processed_intel.append({**art, **intel})
-            
-            # Color basado en amenaza
-            color = 'red' if intel['threat'] > 7 else 'orange'
-            
-            folium.Marker(
-                location=[intel['lat'], intel['lon']],
-                popup=f"<b>{intel['loc']}</b><br>{art['title']}",
-                icon=folium.Icon(color=color, icon='info-sign')
-            ).add_to(marker_cluster)
-
-    st_folium(m, width="100%", height=700, use_container_width=True)
+    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB dark_matter")
+    for item in processed_intel:
+        folium.Marker(
+            location=[item['lat'], item['lon']],
+            popup=item['title']
+        ).add_to(m)
+    st_folium(m, width="100%", height=600)
 
 with col_feed:
-    st.markdown("### 📥 LIVE_INTEL_STREAM")
+    st.subheader("📥 LIVE STREAM")
     if not processed_intel:
-        st.write("Esperando datos del satélite...")
+        st.error("❌ La IA descartó todas las noticias o hubo un error de formato.")
     for item in processed_intel:
-        threat_class = "threat-critical" if item['threat'] > 7 else "threat-high"
-        st.markdown(f"""
-            <div class="intel-card {threat_class}">
-                <strong style="color:#60a5fa;">{item['loc'].upper()} [LVL {item['threat']}]</strong><br>
-                {item['title']}<br>
-                <a href="{item['url']}" style="color:#3b82f6; text-decoration:none; font-size:11px;">→ VER FUENTE</a>
-            </div>
-            """, unsafe_allow_html=True)
-
-st.markdown("<hr style='border:0.5px solid #1f2937'><p style='text-align:center; color:#4b5563; font-size:10px;'>CLASSIFIED INFORMATION - AEGIS CORP PROPRIETARY</p>", unsafe_allow_html=True)
+        st.markdown(f"**[{item['loc']}]** {item['title']}")
+        st.divider()
