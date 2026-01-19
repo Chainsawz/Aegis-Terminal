@@ -1,5 +1,5 @@
 streamlit
-streamlit-folium
-folium
 requests
 google-genai
+pydeck
+pandas
