@@ -9,25 +9,26 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE INTERFAZ ---
 st.set_page_config(
-    page_title="AEGIS TACTICAL v5.8", 
+    page_title="AEGIS TACTICAL v5.9", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
 
-# --- CSS: ESTÉTICA DE BÚNKER APOCALÍPTICO ---
+# --- CSS: PROTOCOLO "VOID ZERO" (EXTERMINIO DE CUADROS CLAROS) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=JetBrains+Mono&display=swap');
     
+    /* Fondo maestro de la interfaz */
     .stApp { background: #020617; color: #f1f5f9; font-family: 'Inter', sans-serif; }
     
-    /* FIX DE RENDERIZADO: Fondo negro para eliminar cuadros blancos */
+    /* ELIMINACIÓN DE BORDES BLANCOS: Forzamos el iframe y su contenedor a negro puro */
     iframe { 
         background-color: #020617 !important; 
+        border: 1px solid #1e293b !important;
         border-radius: 12px;
-        border: 1px solid #1e293b;
     }
-    
+
     .intel-card {
         background: rgba(15, 23, 42, 0.95);
         border: 1px solid #1e293b;
@@ -47,44 +48,35 @@ try:
     client = genai.Client(api_key=st.secrets["gemini_api_key"])
     NEWS_API_KEY = st.secrets["news_api_key"]
 except Exception as e:
-    st.error(f"🚨 ERROR EN EL ENLACE DE DATOS: {e}")
+    st.error(f"🚨 FALLO DE ENLACE TÁCTICO: {e}")
     st.stop()
 
-# --- BANCO DE MEMORIA (PERSISTENCIA 24H) ---
+# --- BÚFER DE MEMORIA (PERSISTENCIA 24H) ---
 if 'memory' not in st.session_state:
     st.session_state.memory = []
 if 'raw_feed' not in st.session_state:
     st.session_state.raw_feed = []
 
 def update_memory(new_intel):
-    # Filtrado de duplicados por URL para no llenar el radar de basura
     existing_urls = {item['url'] for item in st.session_state.memory}
     for item in new_intel:
         if item['url'] not in existing_urls:
             item['timestamp'] = datetime.now()
             st.session_state.memory.append(item)
-    
-    # Purgar transmisiones de más de 24 horas
     cutoff = datetime.now() - timedelta(hours=24)
     st.session_state.memory = [i for i in st.session_state.memory if i['timestamp'] > cutoff]
 
-# --- MOTOR IA POR LOTES (ANTI-SATURACIÓN) ---
+# --- MOTOR IA POR LOTES (PROTECCIÓN DE CUOTA) ---
 def analyze_batch_intel(articles):
     if not articles: return []
-    # Comprimimos el feed para ahorrar tokens y cuota
     news_list = [{"id": i, "t": a['title']} for i, a in enumerate(articles)]
-    
-    prompt = f"Analyze these headlines for military events. Return ONLY JSON list: [{{'id':int, 'threat':1-10, 'lat':float, 'lon':float, 'loc':'City', 'sum':'brief'}}]. News: {json.dumps(news_list)}"
-    
+    prompt = f"Analyze military news. Return ONLY JSON list: [{{'id':int, 'threat':1-10, 'lat':float, 'lon':float, 'loc':'City', 'sum':'brief text'}}]. Data: {json.dumps(news_list)}"
     try:
-        # Usamos 1.5 Flash para maximizar la cuota de peticiones gratis
         response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
         res_text = response.text.strip().replace('```json', '').replace('```', '')
         analyzed = json.loads(res_text)
         return [{**articles[r['id']], **r} for r in analyzed]
-    except Exception:
-        # Modo Fallback si la IA está en "cooldown"
-        return []
+    except: return []
 
 def fetch_news():
     query = "(military OR war OR missile OR 'border conflict')"
@@ -95,12 +87,12 @@ def fetch_news():
     except: return []
 
 # --- INTERFAZ DE COMANDO ---
-st.markdown("<h1 style='color:#3b82f6;'>◤ AEGIS_VOID_BASTION_v5.8</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color:#3b82f6;'>◤ AEGIS_VOID_ZERO_v5.9</h1>", unsafe_allow_html=True)
 
-# Panel Lateral de Operaciones
-st.sidebar.header("🕹️ OPERACIONES")
-if st.sidebar.button("⚡ ESCANEO GLOBAL"):
-    with st.spinner("Interceptando señales satelitales..."):
+# Panel Lateral
+st.sidebar.header("🕹️ CONTROL_CENTER")
+if st.sidebar.button("⚡ FORCE_RESCAN"):
+    with st.spinner("Sincronizando satélites..."):
         raw = fetch_news()
         st.session_state.raw_feed = raw
         if raw:
@@ -108,32 +100,34 @@ if st.sidebar.button("⚡ ESCANEO GLOBAL"):
             update_memory(analyzed)
     st.rerun()
 
-# Métricas de Red
+# Métricas
 m1, m2, m3 = st.columns(3)
-m1.metric("NODOS_24H", len(st.session_state.memory), "MEM_SYNC")
-m2.metric("RAW_SIGNALS", len(st.session_state.raw_feed))
-m3.metric("MAP_STATUS", "ANCHORED")
+m1.metric("NODOS_IA", len(st.session_state.memory), "24H")
+m2.metric("SEÑALES_RAW", len(st.session_state.raw_feed))
+m3.metric("MAP_ENGINE", "VOID_STABLE")
 
 st.divider()
 
 col_map, col_feed = st.columns([2.5, 1])
 
 with col_map:
-    # --- ANCLAJE TOTAL DEL MAPA (v5.8): PROHIBIDO MOVER ---
-    # Implementamos el bloqueo absoluto de coordenadas y arrastre
+    # --- MAPA ANCLADO Y OSCURECIDO (v5.9) ---
+    # Creamos el mapa con un color de fondo explícito inyectado
     m = folium.Map(
         location=[20, 0], 
         zoom_start=2.3, 
         tiles="cartodbdark_matter", 
-        no_wrap=True,               # Prohibida la repetición de continentes
-        min_zoom=2.3,               # Prohibido el zoom-out para no ver el vacío
-        max_bounds=True,            # Muros de realidad geográficos
+        no_wrap=True,               # Prohibida repetición
+        min_zoom=2.3,               # Bloqueo de alejamiento
+        max_bounds=True,            # Muros de realidad
         min_lat=-85, max_lat=85,
         min_lon=-180, max_lon=180,
-        dragging=False,             # EL MAPA ESTÁ CLAVADO AL CHASIS
-        scrollWheelZoom=True,       # Zoom con rueda permitido
-        doubleClickZoom=False       # Desactivado para evitar errores de centrado
+        dragging=False,             # MAPA CLAVADO
+        scrollWheelZoom=True
     )
+    
+    # HACK MAESTRO: Inyectamos CSS directamente en el objeto Folium para que su fondo sea negro
+    m.get_root().header.add_child(folium.Element("<style>.folium-map { background-color: #020617 !important; }</style>"))
     
     marker_cluster = MarkerCluster().add_to(m)
     Fullscreen().add_to(m)
@@ -146,26 +140,25 @@ with col_map:
             icon=folium.Icon(color=color, icon='warning', prefix='fa')
         ).add_to(marker_cluster)
     
-    # Sincronización de renderizado mediante Key única
-    st_folium(m, width=1200, height=720, key="aegis_bastion_map")
+    # Renderizado con ancho de contenedor para evitar huecos laterales
+    st_folium(m, width=1200, height=720, use_container_width=True, key="aegis_void_zero")
 
 with col_feed:
-    st.subheader("📥 LIVE_INTEL_24H")
+    st.subheader("📥 LIVE_INTEL_STREAM")
     if st.session_state.memory:
-        # Prioridad por nivel de amenaza OSINT
         sorted_intel = sorted(st.session_state.memory, key=lambda x: x['threat'], reverse=True)
         for item in sorted_intel:
             t_style = "critical" if item['threat'] > 7 else ""
             st.markdown(f"""<div class="intel-card {t_style}">
                 <small>[{item['loc'].upper()}] - AMENAZA: {item['threat']}</small><br>
                 <strong>{item['title']}</strong><br>
-                <a href="{item['url']}" target="_blank" style="color:#3b82f6; font-size:10px;">[SOURCE_LINK]</a>
+                <a href="{item['url']}" target="_blank" style="color:#3b82f6; font-size:10px;">[VER_ALPHA]</a>
                 </div>""", unsafe_allow_html=True)
     elif st.session_state.raw_feed:
-        st.info("📡 Feed Analógico: IA en recarga de cuota.")
+        st.info("📡 Señales crudas detectadas.")
         for item in st.session_state.raw_feed[:10]:
             st.markdown(f"<div class='intel-card'><strong>{item['title']}</strong></div>", unsafe_allow_html=True)
     else:
-        st.write("Radar en espera de escaneo táctico.")
+        st.write("Radar en espera.")
 
-st.markdown("<p style='text-align:center; color:#1e293b; font-size:10px; margin-top:30px;'>PROPERTY OF AEGIS CORP - ENCRYPTED TERMINAL v5.8</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color:#1e293b; font-size:10px; margin-top:30px;'>PROPERTY OF AEGIS CORP - ENCRYPTED TERMINAL v5.9</p>", unsafe_allow_html=True)
