@@ -9,30 +9,28 @@ from datetime import datetime
 
 # --- CONFIGURACIÓN DE INTERFAZ ---
 st.set_page_config(
-    page_title="AEGIS TACTICAL v4.3", 
+    page_title="AEGIS TACTICAL v4.3.1", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
 
-# --- CSS: ESTÉTICA DE ALTO NIVEL (GLASSMORPHISM & STEALTH) ---
+# --- CSS: ESTÉTICA CYBERPUNK PROFESIONAL ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&display=swap');
     
     .stApp {
-        background: #020617; /* Fondo ultra oscuro */
+        background: #020617;
         color: #f1f5f9;
         font-family: 'Inter', sans-serif;
     }
 
-    /* Contenedor del Mapa con bordes de neón sutil */
     iframe {
         border-radius: 12px;
         border: 1px solid #1e293b;
         box-shadow: 0 4px 20px rgba(0,0,0,0.8);
     }
 
-    /* Tarjetas de Intel Stream */
     .intel-card {
         background: rgba(15, 23, 42, 0.8);
         border: 1px solid #1e293b;
@@ -45,7 +43,6 @@ st.markdown("""
     .critical { border-left-color: #ef4444; }
     .high { border-left-color: #f97316; }
 
-    /* Métricas */
     [data-testid="stMetric"] {
         background: #0f172a;
         border: 1px solid #1e293b;
@@ -60,12 +57,11 @@ try:
     client = genai.Client(api_key=st.secrets["gemini_api_key"])
     NEWS_API_KEY = st.secrets["news_api_key"]
 except Exception as e:
-    st.error("🚨 FALLO EN CREDENCIALES: Verifica tus Secrets.")
+    st.error("🚨 ERROR DE CREDENCIALES: Revisa tus Secrets en Streamlit.")
     st.stop()
 
 # --- CEREBRO: ANALISTA IA GEMINI 2.0 ---
 def analizar_con_ia(titulo, descripcion):
-    # Prompt optimizado para evitar alucinaciones y asegurar JSON puro
     prompt = f"""
     Analyze: "{titulo}. {descripcion}"
     Return ONLY JSON:
@@ -101,9 +97,9 @@ def fetch_global_intel():
         return []
 
 # --- DASHBOARD PRINCIPAL ---
-st.markdown("<h1 style='color:#3b82f6;'>◤ AEGIS_TACTICAL_COMMAND_v4.3</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color:#3b82f6;'>◤ AEGIS_TACTICAL_COMMAND_v4.3.1</h1>", unsafe_allow_html=True)
 
-# Sidebar de Control
+# Sidebar
 st.sidebar.markdown("### 🛰️ RADAR_STATUS")
 st.sidebar.success("SENSORS: ACTIVE")
 st.sidebar.info(f"SYNC_UTC: {datetime.now().strftime('%H:%M:%S')}")
@@ -112,7 +108,7 @@ if st.sidebar.button("🔄 FORCE_RESCAN"):
     st.cache_data.clear()
     st.rerun()
 
-# Métricas de la Red
+# Métricas
 m1, m2, m3 = st.columns(3)
 m1.metric("GLOBAL_THREAT", "ELEVATED", "DEFCON 3")
 m2.metric("AI_ANALYST", "GEMINI_2.0", "OPTIMAL")
@@ -120,37 +116,34 @@ m3.metric("OSINT_FEED", "SYNCED", "LIVE")
 
 st.divider()
 
-# --- CORE: MAPA Y FEED DE INTELIGENCIA ---
+# --- CORE: MAPA Y FEED ---
 articles = fetch_global_intel()
 processed_data = []
 
 col_map, col_feed = st.columns([2.5, 1])
 
 with col_map:
-    # --- AJUSTE DE MAPA: SIN REPETICIÓN Y ZOOM BLOQUEADO ---
-    # Definimos el área visible del mundo para evitar el vacío
+    # Mapa blindado sin repetición
     m = folium.Map(
         location=[20, 0], 
         zoom_start=2.3, 
         tiles="CartoDB dark_matter",
-        no_wrap=True,           # Mata la repetición horizontal
-        min_zoom=2.3,           # No deja que el usuario se aleje más de la cuenta
-        max_bounds=True,        # Activa el límite de scroll
+        no_wrap=True,
+        min_zoom=2.3,
+        max_bounds=True,
         min_lat=-85, max_lat=85,
         min_lon=-180, max_lon=180
     )
     
-    # Marcadores con clustering para evitar líos visuales
     marker_cluster = MarkerCluster().add_to(m)
     Fullscreen().add_to(m)
 
     if articles:
-        with st.spinner("Decodificando transmisiones satelitales..."):
+        with st.spinner("Analizando transmisiones..."):
             for art in articles:
                 intel = analizar_con_ia(art['title'], art['description'])
                 if intel.get("is_mil"):
                     processed_data.append({**art, **intel})
-                    # Color del marcador según nivel de amenaza
                     color = 'red' if intel['threat'] >= 8 else 'orange'
                     folium.Marker(
                         location=[intel['lat'], intel['lon']],
@@ -163,7 +156,7 @@ with col_map:
 with col_feed:
     st.markdown("### 📥 LIVE_INTEL_STREAM")
     if not processed_data:
-        st.write("Esperando señal... Radar despejado.")
+        st.write("Radar despejado.")
     
     for item in processed_data:
         t_style = "critical" if item['threat'] >= 8 else "high"
@@ -177,4 +170,5 @@ with col_feed:
             </div>
             """, unsafe_allow_html=True)
 
-st.markdown("<p style='text-align:center; color:#1e293b; font-size:10px; margin-top:50px;'>PROPERTY OF AEGIS CORP - ENCRYPTED TERMINAL v4.3</
+# FOOTER FINAL (Asegúrate de copiar hasta aquí)
+st.markdown("<p style='text-align:center; color:#1e293b; font-size:10px; margin-top:50px;'>PROPERTY OF AEGIS CORP - ENCRYPTED TERMINAL v4.3.1</p>", unsafe_allow_html=True)
