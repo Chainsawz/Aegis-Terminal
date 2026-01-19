@@ -1,83 +1,101 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
+from folium.plugins import MarkerCluster, Fullscreen
 import requests
-import google.generativeai as genai
+from google import genai
 import json
 from datetime import datetime
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="AEGIS REPAIR v4.1", layout="wide")
+# --- CONFIGURACIÓN DE INTERFAZ ---
+st.set_page_config(
+    page_title="AEGIS TACTICAL v4.2", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
+# --- CSS: ESTÉTICA DE CONTRATISTA MILITAR PRIVADO ---
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=JetBrains+Mono&display=swap');
+    
+    .stApp {
+        background: radial-gradient(circle, #0f172a 0%, #020617 100%);
+        color: #f1f5f9;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Tarjetas de Inteligencia */
+    .intel-card {
+        background: rgba(30, 41, 59, 0.7);
+        border: 1px solid #334155;
+        border-left: 4px solid #3b82f6;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        backdrop-filter: blur(10px);
+    }
+    .critical { border-left-color: #ef4444; box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+    .high { border-left-color: #f97316; }
+
+    /* Estilo para métricas */
+    [data-testid="stMetric"] {
+        background: #1e293b;
+        border: 1px solid #334155;
+        padding: 20px;
+        border-radius: 12px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- CONEXIÓN CON EL BÚNKER (API KEYS) ---
 try:
-    genai.configure(api_key=st.secrets["gemini_api_key"])
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Nuevo cliente de Google Gen AI (Estándar 2026)
+    client = genai.Client(api_key=st.secrets["gemini_api_key"])
     NEWS_API_KEY = st.secrets["news_api_key"]
-except:
-    st.error("🚨 KEYS NO ENCONTRADAS EN SECRETS")
+except Exception as e:
+    st.error("🚨 FALLO DE AUTENTICACIÓN: Verifica los Secrets en Streamlit.")
     st.stop()
 
-# --- FUNCIÓN DE IA CON DEBUG ---
-def analizar_con_ia(titulo):
-    # Prompt ultra-simplificado para evitar errores de formato
+# --- CEREBRO: ANÁLISIS TÁCTICO POR IA ---
+def analizar_con_ia(titulo, descripcion):
     prompt = f"""
-    Analiza: "{titulo}"
-    Responde SOLO un JSON:
-    {{"is_mil": true, "threat": 5, "lat": 20.0, "lon": 0.0, "loc": "Unknown"}}
-    Si NO es sobre guerra/ejército, is_mil: false.
+    Actúa como analista OSINT militar. Analiza: "{titulo}. {descripcion}"
+    Responde estrictamente en JSON:
+    {{
+        "is_mil": boolean,
+        "threat": int(1-10),
+        "lat": float,
+        "lon": float,
+        "location": "Nombre del lugar",
+        "summary": "Resumen técnico de 1 frase"
+    }}
+    Si no es un evento militar o de conflicto, pon "is_mil": false.
     """
     try:
-        response = model.generate_content(prompt)
-        # Limpieza agresiva de la respuesta
-        clean_json = response.text.strip().replace('```json', '').replace('```', '')
-        return json.loads(clean_json)
-    except Exception as e:
-        # Si la IA falla, lo registramos internamente
-        return {"is_mil": False, "error": str(e)}
+        # Usando Gemini 2.0 Flash para máxima velocidad
+        response = client.models.generate_content(
+            model="gemini-2.0-flash", 
+            contents=prompt
+        )
+        # Limpieza de markdown en la respuesta
+        res_text = response.text.strip().replace('```json', '').replace('```', '')
+        return json.loads(res_text)
+    except:
+        return {"is_mil": False}
 
-@st.cache_data(ttl=300)
-def get_intel():
-    # Ampliamos los términos de búsqueda para asegurar que traiga algo
-    query = "(military OR war OR 'border' OR 'missile' OR 'defense')"
-    url = f'https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}'
-    r = requests.get(url)
-    if r.status_code != 200:
-        st.sidebar.error(f"Error NewsAPI: {r.status_code}")
+# --- SUMINISTRO: OBTENCIÓN DE NOTICIAS ---
+@st.cache_data(ttl=600)
+def fetch_global_intel():
+    # Buscamos términos bélicos clave
+    query = "(war OR military OR missile OR 'border clash' OR invasion OR 'air strike')"
+    url = f'https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&pageSize=15&apiKey={NEWS_API_KEY}'
+    try:
+        r = requests.get(url)
+        return r.json().get('articles', [])
+    except:
         return []
-    return r.json().get('articles', [])
 
-# --- UI ---
-st.title("◤ AEGIS DEBUG_MODE")
-
-articles = get_intel()
-processed_intel = []
-
-if not articles:
-    st.warning("⚠️ No se recibieron noticias de NewsAPI. ¿Has llegado al límite diario?")
-else:
-    st.info(f"📡 {len(articles)} noticias crudas recibidas. Analizando con IA...")
-    
-    for art in articles:
-        intel = analizar_con_ia(art['title'])
-        if intel.get("is_mil"):
-            processed_intel.append({**art, **intel})
-
-# --- MOSTRAR RESULTADOS ---
-col_map, col_feed = st.columns([3, 1])
-
-with col_map:
-    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB dark_matter")
-    for item in processed_intel:
-        folium.Marker(
-            location=[item['lat'], item['lon']],
-            popup=item['title']
-        ).add_to(m)
-    st_folium(m, width="100%", height=600)
-
-with col_feed:
-    st.subheader("📥 LIVE STREAM")
-    if not processed_intel:
-        st.error("❌ La IA descartó todas las noticias o hubo un error de formato.")
-    for item in processed_intel:
-        st.markdown(f"**[{item['loc']}]** {item['title']}")
-        st.divider()
+# --- PANEL DE CONTROL ---
+st.markdown("<h1 style='color:#3b82f6;'>◤ AEGIS_TACTICAL_COMMAND_v4.2</h1>", unsafe_allow_html=True)
+st.sidebar.image("
